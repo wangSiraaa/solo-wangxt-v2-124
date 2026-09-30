@@ -23,3 +23,7 @@ venv/
 __pycache__/
 .pytest_cache/
 .DS_Store
+
+# Angular build output
+frontend/dist/
+frontend/.angular/

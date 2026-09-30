@@ -1,0 +1,87 @@
+:root {
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --ink: #1f2933;
+  --muted: #6b7280;
+  --line: #e3e7ec;
+  --accent: #1d4ed8;
+  --warn: #b45309;
+  --bad: #b91c1c;
+  --ok: #15803d;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 18px 0 8px; }
+
+.app-shell { max-width: 1280px; margin: 0 auto; padding: 20px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.col { flex: 1 1 0; min-width: 220px; }
+
+label { display: block; font-size: 12px; color: var(--muted); margin: 6px 0 2px; }
+input, select, textarea {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--line);
+  border-radius: 6px; font: inherit; background: #fff;
+}
+textarea { min-height: 44px; }
+
+button {
+  padding: 8px 14px; border: 0; border-radius: 6px; background: var(--accent);
+  color: #fff; font: inherit; cursor: pointer;
+}
+button.ghost { background: #e7edf7; color: var(--accent); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+
+.chip {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; margin-right: 6px;
+}
+.chip.ok { background: #dcfce7; color: var(--ok); }
+.chip.bad { background: #fee2e2; color: var(--bad); }
+.chip.warn { background: #fef3c7; color: var(--warn); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
+         vertical-align: top; font-size: 13px; }
+th { color: var(--muted); font-weight: 600; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.warn-text { color: var(--warn); }
+.bad-text { color: var(--bad); }
+
+#curvePlot { width: 100%; height: 520px; }
+#residualPlot { width: 100%; height: 180px; }
+
+.summary-cards { display: flex; gap: 12px; flex-wrap: wrap; }
+.card {
+  flex: 1 1 160px; border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px; background: #fbfcfe;
+}
+.card .k { font-size: 12px; color: var(--muted); }
+.card .v { font-size: 22px; font-weight: 600; margin-top: 4px;
+           font-variant-numeric: tabular-nums; }
+.card .v.none { color: var(--bad); font-size: 15px; }
+
+details { margin-top: 6px; }
+summary { cursor: pointer; color: var(--accent); }
+code { background: #f1f3f6; padding: 1px 5px; border-radius: 4px; }

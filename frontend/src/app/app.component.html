@@ -1,0 +1,212 @@
+<div class="app-shell">
+  <h1>材料实验室 · 拉伸试验分析</h1>
+  <p class="muted">载荷/位移 → 工程与真实应力应变 · SciPy 弹性拟合与 0.2% 偏移法 ·
+    原始信号分列保留（夹具位移 ≠ 引伸计）</p>
+
+  <div class="panel">
+    <div class="row">
+      <strong>核对案例（合成数据）：</strong>
+      <button class="ghost" (click)="loadDemo('clear_yield')">线弹性+清晰屈服</button>
+      <button class="ghost" (click)="loadDemo('no_clear_yield')">无清晰屈服</button>
+      <button class="ghost" (click)="loadDemo('missing_dims')">尺寸缺失</button>
+      <span class="muted small" *ngIf="testId">当前试验：{{ testId }}</span>
+      <span class="chip warn" *ngIf="loading">计算中…</span>
+      <span class="chip bad" *ngIf="error">{{ error }}</span>
+    </div>
+  </div>
+
+  <ng-container *ngIf="report">
+    <!-- 汇总卡片 -->
+    <div class="panel">
+      <div class="summary-cards">
+        <div class="card" *ngFor="let r of resultRows">
+          <div class="k">{{ r.label }}</div>
+          <div class="v" [class.none]="!r.available">
+            <ng-container *ngIf="r.available">{{ fmt(r.value) }}</ng-container>
+            <ng-container *ngIf="!r.available">不可得</ng-container>
+          </div>
+          <div class="small muted">{{ r.unit }}</div>
+          <div class="small bad-text" *ngIf="!r.available">{{ r.reason_if_unavailable }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案控制 -->
+    <div class="panel">
+      <h2 style="margin-top:0">计算方案</h2>
+      <div class="row">
+        <div class="col">
+          <label>应变来源（两个通道独立，禁止混用）</label>
+          <select [(ngModel)]="strainSource" (ngModelChange)="preview()">
+            <option value="extensometer">引伸计 ΔLe/Le（推荐）</option>
+            <option value="crosshead">夹具位移（δ−C·F)/L0（含机架变形风险）</option>
+          </select>
+        </div>
+        <div class="col">
+          <label>弹性区点索引 起</label>
+          <input type="number" [(ngModel)]="idxMin" (ngModelChange)="preview()">
+        </div>
+        <div class="col">
+          <label>弹性区点索引 止（半开）</label>
+          <input type="number" [(ngModel)]="idxMax" (ngModelChange)="preview()">
+        </div>
+        <div class="col">
+          <label>偏移量（单位：% 工程应变；0.2% = 0.002）</label>
+          <input type="number" step="0.01" [(ngModel)]="offsetPct">
+        </div>
+        <div class="col">
+          <label>最少拟合点数</label>
+          <input type="number" [(ngModel)]="minPoints" (ngModelChange)="preview()">
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label style="margin:0"><input type="checkbox" [(ngModel)]="showEng"
+          (ngModelChange)="render()" style="width:auto"> 工程曲线</label>
+        <label style="margin:0"><input type="checkbox" [(ngModel)]="showTrue"
+          (ngModelChange)="render()" style="width:auto"> 真实曲线（仅颈缩前）</label>
+        <label style="margin:0"><input type="checkbox" [(ngModel)]="showOffsetLine"
+          (ngModelChange)="render()" style="width:auto"> 显示偏移线</label>
+        <button (click)="preview()">拟合预览（残差/区间影响）</button>
+        <button class="ghost" (click)="runAnalysis()">保存方案并生成报告</button>
+        <button class="ghost" (click)="downloadReport()"
+          [disabled]="!savedAnalysisId">下载 Markdown 报告</button>
+      </div>
+
+      <h2>人工排除点（原始信号保留，仅本方案屏蔽；必须写原因）</h2>
+      <div class="row">
+        <div class="col">
+          <input [(ngModel)]="excludeInput"
+            placeholder="格式：索引:原因，如 128:引伸计滑移尖点（核对录像）">
+        </div>
+        <button (click)="addExclusion()">添加</button>
+      </div>
+      <table *ngIf="report.excluded_points.length" style="margin-top:8px">
+        <tr><th>索引</th><th>原因</th><th>操作</th></tr>
+        <tr *ngFor="let e of report.excluded_points; let i = index">
+          <td>{{ e.index }}</td><td>{{ e.reason }}
+            <span class="muted small">（{{ e.author }}）</span></td>
+          <td><button class="ghost" (click)="removeExclusion(i)">撤销</button></td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 曲线图 -->
+    <div class="panel">
+      <app-plot [traces]="curveTraces" [layout]="curveLayout" [height]="540"></app-plot>
+    </div>
+
+    <!-- 残差与区间影响 -->
+    <div class="panel">
+      <app-plot [traces]="residualTraces" [layout]="residualLayout"
+                [height]="200"></app-plot>
+      <div *ngIf="influence?.available" class="small" style="margin-top:8px">
+        <strong>区间影响：</strong>
+        每端内缩 {{ influence!.trim_points_each_side }} 点后，E 漂移
+        左端 {{ influence!.drift_percent!['left_trimmed'] | number:'1.2f' }}%，
+        右端 {{ influence!.drift_percent!['right_trimmed'] | number:'1.2f' }}%，
+        两端 {{ influence!.drift_percent!['both_trimmed'] | number:'1.2f' }}%；
+        最大绝对漂移
+        <span [class.warn-text]="influence!.max_abs_drift_percent! > 2">
+          {{ influence!.max_abs_drift_percent | number:'1.2f' }}%
+        </span>
+        （>2% 说明区间选择不稳妥）。
+      </div>
+      <div class="small bad-text" *ngIf="influence && !influence.available">
+        {{ influence.reason }}
+      </div>
+    </div>
+
+    <!-- 屈服判据 -->
+    <div class="panel">
+      <h2 style="margin-top:0">屈服判据</h2>
+      <div *ngIf="report.offset_yield.available; else noRp">
+        <span class="chip ok">
+          Rp{{ offsetPct }} = {{ fmt(report.offset_yield.proof_stress_mpa) }} MPa
+        </span>
+        对应应变 {{ report.offset_yield.proof_strain | number:'1.5f' }}
+        = {{ (report.offset_yield.proof_strain! * 100) | number:'1.3f' }}%；
+        交点在索引 {{ report.offset_yield.index_a }}–{{ report.offset_yield.index_b }}
+        之间线性插值。
+      </div>
+      <ng-template #noRp>
+        <span class="chip bad">偏移交点不可得</span>
+        <span class="bad-text">{{ report.offset_yield.reason_if_unavailable }}</span>
+      </ng-template>
+      <div style="margin-top:8px">
+        <ng-container *ngIf="report.yield_plateau.available">
+          <span class="chip ok">检测到屈服平台</span>
+          上屈服 {{ fmt(report.yield_plateau.upper_yield_mpa) }} MPa /
+          下屈服 {{ fmt(report.yield_plateau.lower_yield_mpa) }} MPa
+        </ng-container>
+        <ng-container *ngIf="!report.yield_plateau.available">
+          <span class="chip warn">无清晰屈服平台</span>
+          <span class="muted small">{{ report.yield_plateau.reason_if_unavailable }}</span>
+        </ng-container>
+      </div>
+    </div>
+
+    <!-- 告警 -->
+    <div class="panel" *ngIf="report.warnings.length || report.unavailable_reasons.length">
+      <h2 style="margin-top:0">告警与限制</h2>
+      <ul class="warn-text">
+        <li *ngFor="let w of report.warnings">⚠️ {{ w }}</li>
+      </ul>
+      <ul class="bad-text">
+        <li *ngFor="let r of report.unavailable_reasons">{{ r }}</li>
+      </ul>
+    </div>
+
+    <!-- 结果溯源表 -->
+    <div class="panel">
+      <h2 style="margin-top:0">结果溯源（报告不接受无来源的裸数字）</h2>
+      <table>
+        <tr>
+          <th>指标</th><th class="num">数值</th><th>单位</th><th>状态</th>
+          <th>公式 / 方法 / 输入与诊断</th>
+        </tr>
+        <tr *ngFor="let r of resultRows">
+          <td>{{ r.label }}</td>
+          <td class="num">{{ r.available ? fmt(r.value) : '—' }}</td>
+          <td>{{ r.unit }}</td>
+          <td>
+            <span class="chip ok" *ngIf="r.available">可得</span>
+            <span class="chip bad" *ngIf="!r.available">不可得</span>
+          </td>
+          <td>
+            <div *ngIf="!r.available" class="small bad-text">
+              {{ r.reason_if_unavailable }}
+            </div>
+            <div class="small"><code>{{ r.formula }}</code></div>
+            <div class="small muted">{{ r.method }}</div>
+            <details>
+              <summary class="small">输入 / 诊断 / 告警</summary>
+              <pre class="small">{{ r.inputs | json }}</pre>
+              <pre class="small" *ngIf="r.diagnostics | json as d">{{ d }}</pre>
+              <ul class="small warn-text" *ngIf="r.warnings.length">
+                <li *ngFor="let w of r.warnings">{{ w }}</li>
+              </ul>
+            </details>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 方案历史 -->
+    <div class="panel" *ngIf="history.length > 1">
+      <h2 style="margin-top:0">同一试验的方案历史（对比区间选择影响）</h2>
+      <table>
+        <tr><th>分析 ID</th><th>弹性区</th><th>E [MPa]</th><th>Rp [MPa]</th>
+            <th>Rm [MPa]</th><th>排除点</th></tr>
+        <tr *ngFor="let h of history">
+          <td class="small">{{ h.id | slice:0:8 }}</td>
+          <td class="small">[{{ h.plan.elastic_index_min }},
+            {{ h.plan.elastic_index_max }})</td>
+          <td class="num">{{ h.summary.E_mpa | number:'1.5g' }}</td>
+          <td class="num">{{ h.summary['Rp0.2_mpa'] | number:'1.5g' }}</td>
+          <td class="num">{{ h.summary.Rm_mpa | number:'1.5g' }}</td>
+          <td>{{ h.excluded_points.length }}</td>
+        </tr>
+      </table>
+    </div>
+  </ng-container>
+</div>
